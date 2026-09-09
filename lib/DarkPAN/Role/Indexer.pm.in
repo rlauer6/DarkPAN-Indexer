@@ -1,0 +1,178 @@
+package DarkPAN::Role::Indexer;
+
+use strict;
+use warnings;
+
+use Amazon::S3::Lite;
+use Carp;
+use CLI::Simple::Constants qw(:booleans);
+use CLI::Simple::Utils qw(choose);
+use Dist::Metadata;
+use English qw(-no_match_vars);
+use File::Temp qw(tempfile);
+use Scalar::Util qw(openhandle);
+
+use Role::Tiny;
+
+########################################################################
+sub index_distribution {
+########################################################################
+  my ( $self, %args ) = @_;
+
+  my $s3        = $args{s3} // Amazon::S3::Lite->new( region => $args{region} );
+  my $bucket    = $args{bucket};
+  my $key       = $args{key};
+  my $output_fh = $args{output_fh};
+
+  my $distribution = $key;
+
+  my $object = $s3->get_object( $bucket, $key, );
+
+  croak "object disappeared while indexing\n"
+    if !defined $object;
+
+  my $content = $object->{content};
+
+  croak "object has no content\n"
+    if !defined $content;
+
+  my ( $archive_fh, $archive_file ) = tempfile(
+    SUFFIX => '.tar.gz',
+    UNLINK => $TRUE,
+  );
+
+  binmode $archive_fh;
+
+  print {$archive_fh} $content
+    or croak sprintf "unable to write temporary archive: %s\n", $OS_ERROR,;
+
+  close $archive_fh
+    or croak sprintf "unable to close temporary archive: %s\n", $OS_ERROR,;
+
+  my $metadata = Dist::Metadata->new( file => $archive_file, );
+
+  my $distribution_version = $metadata->version();
+  my $package_versions     = $metadata->package_versions();
+
+  die "unable to determine distribution version\n"
+    if !defined $distribution_version || $distribution_version eq q{};
+
+  die "unable to determine packages provided by distribution\n"
+    if ref $package_versions ne 'HASH';
+
+  my $module_count = 0;
+
+  for my $module_name ( keys %{$package_versions} ) {
+    my $module_version = $package_versions->{$module_name};
+
+    if ( !defined $module_version || $module_version eq q{} || $module_version eq '0' ) {
+      $module_version = $distribution_version;
+    }
+
+    print {$output_fh} join( "\t", $distribution, $module_name, $module_version, ), "\n"
+      or die sprintf "unable to write index record: %s\n", $OS_ERROR,;
+
+    $module_count++;
+  }
+
+  return $module_count;
+}
+
+########################################################################
+sub index_darkpan {
+########################################################################
+  my ( $self, %args ) = @_;
+
+  my ( $bucket, $prefix, $region, $output ) = @args{qw(bucket prefix region output)};
+
+  croak "bucket is required\n"
+    if !defined $bucket || $bucket eq q{};
+
+  my $output_fh = choose {
+    return $output
+      if openhandle($output);
+
+    return *STDOUT
+      if !$output;
+
+    open my $fh, '>', $output
+      or die sprintf "unable to open '%s' for writing: %s\n", $output, $OS_ERROR,;
+
+    return $fh;
+  };
+
+  my $s3 = Amazon::S3::Lite->new( { region => $region, } );
+
+  my %stats = (
+    distributions_seen    => 0,
+    distributions_indexed => 0,
+    distributions_failed  => 0,
+    modules_written       => 0,
+  );
+
+  my $continuation_token;
+
+  while ($TRUE) {
+    my %options = ( prefix => $prefix, );
+
+    if ( defined $continuation_token ) {
+      $options{continuation_token} = $continuation_token;
+    }
+
+    my $result = $s3->list_objects_v2( $bucket, %options, );
+
+    for my $object ( @{ $result->{objects} || [] } ) {
+      my $key = $object->{key};
+
+      next
+        if !defined $key;
+
+      next
+        if $key !~ m{[.]tar[.]gz\z};
+
+      $stats{distributions_seen}++;
+
+      my $module_count
+        = eval { return $self->index_distribution( s3 => $s3, bucket => $bucket, key => $key, output_fh => $output_fh, ); };
+
+      if ($EVAL_ERROR) {
+        my $error = $EVAL_ERROR;
+        chomp $error;
+
+        warn sprintf "failed to index s3://%s/%s: %s\n", $bucket, $key, $error,;
+
+        $stats{distributions_failed}++;
+        next;
+      }
+
+      $stats{distributions_indexed}++;
+      $stats{modules_written} += $module_count;
+    }
+
+    last
+      if !$result->{is_truncated};
+
+    $continuation_token = $result->{next_continuation_token};
+
+    die "truncated S3 listing did not return a continuation token\n"
+      if !defined $continuation_token || $continuation_token eq q{};
+  }
+
+  if ($output) {
+    close $output_fh
+      or die sprintf "unable to close '%s': %s\n", $output, $OS_ERROR,;
+  }
+
+  printf {*STDERR} "distributions seen: %d, indexed: %d, failed: %d, modules written: %d\n", @stats{
+    qw(
+      distributions_seen
+      distributions_indexed
+      distributions_failed
+      modules_written
+    )
+  };
+
+  return;
+}
+
+1;

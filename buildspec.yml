@@ -1,0 +1,30 @@
+---
+project:
+  description: DarkPAN::Indexer
+  author:
+    name: Rob Lauer
+    mailto: rclauer@gmail.com
+pm-module: DarkPAN::Indexer
+min-perl-version: 5.010
+dependencies:
+  requires: requires
+  test-requires: test-requires
+  recommends: recommends
+  suggests: suggests
+path:
+  pm-module: lib
+  exe-files: bin
+  tests: t
+extra-files:
+  - ChangeLog
+  - share:
+      - README.md
+resources:
+  bugtracker:
+    mailto: rclauer@gmail.com
+    web: https://github.com/rlauer6/DarkPAN-Indexer/issues
+  homepage: https://github.com/rlauer6/DarkPAN-Indexer
+  repository:
+    type: git
+    url: git@github.com:rlauer6/DarkPAN-Indexer.git
+    web: https://github.com/rlauer6/DarkPAN-Indexer

@@ -1,0 +1,13 @@
+requires "Amazon::S3::Lite", "1.3.0";
+requires "App::cpm::DistNotation", "0";
+requires "App::cpm::version", "0";
+requires "CLI::Simple", "2.2.2";
+requires "CLI::Simple::Constants", "2.2.2";
+requires "CLI::Simple::Utils", "2.2.2";
+requires "DBD::SQLite", "0";
+requires "DBI", "1.647";
+requires "Dist::Metadata", "";
+requires "Role::Tiny", "2.002004";
+requires "Role::Tiny::With", "2.002004";
+requires "experimental", "0.032";
+requires "perl", "5.024000";

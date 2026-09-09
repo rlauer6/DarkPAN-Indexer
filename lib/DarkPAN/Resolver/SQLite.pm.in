@@ -1,0 +1,110 @@
+package DarkPAN::Resolver::SQLite;
+
+# A cpm resolver backed by DarkPAN::Indexer's SQLite database.
+#
+# Invoke it (custom class => use the '+' prefix so cpm takes the name
+# verbatim instead of prepending App::cpm::Resolver::):
+#
+#   cpm install \
+#     --resolver +DarkPAN::Resolver::SQLite,/path/to/cpan-openbedrock-net.db,https://cpan.openbedrock.net/orepan2 \
+#     Amazon::API~2.6.0
+#
+# (If you'd rather type --resolver SQLite,... drop this in as
+#  App::cpm::Resolver::SQLite instead. The '+' form just avoids
+#  squatting skaji's namespace.)
+#
+# Everything after the class name is comma-split and passed to new()
+# POSITIONALLY as @argv -- the built-in resolvers get a hand-built
+# %argv hash, but custom classes do not. That's the one contract gotcha.
+
+use v5.24;
+use warnings;
+use experimental qw(signatures);
+
+use App::cpm::DistNotation;
+use App::cpm::version;
+use DBI;
+
+########################################################################
+sub new ( $class, $ctx, @argv ) {
+########################################################################
+  my ( $db, $mirror ) = @argv;  # <-- positional, not a hash
+
+  die "SQLite resolver: database path is required\n"
+    if !defined $db || $db eq q{};
+
+  die "SQLite resolver: database '$db' not found\n"
+    if !-f $db;
+
+  # $mirror is the base such that "{mirror}/authors/id/{distfile}" is
+  # fetchable -- i.e. everything up to but NOT including authors/id/.
+  $mirror //= 'https://cpan.metacpan.org';
+  $mirror =~ s{/+$}{};
+
+  my $dbh
+    = DBI->connect( "dbi:SQLite:dbname=$db", q{}, q{}, { RaiseError => 1, PrintError => 0, AutoCommit => 1, ReadOnly => 1 }, );
+
+  # The whole point of the multi-version index: pull EVERY row for the
+  # package, not one. Latest-satisfying is chosen in Perl, below.
+  my $sth = $dbh->prepare('SELECT version, distribution FROM modules WHERE module = ?');
+
+  return bless {
+    dbh    => $dbh,
+    sth    => $sth,
+    mirror => $mirror,
+    db     => $db,
+  }, $class;
+}
+
+########################################################################
+sub resolve ( $self, $ctx, $task ) {
+########################################################################
+  my $package = $task->{package};
+  my $range   = $task->{version_range};  # full expression, may be undef
+
+  $self->{sth}->execute($package);
+  my $rows = $self->{sth}->fetchall_arrayref( {} );
+
+  return { error => "not found in $self->{db}" }
+    if !$rows || !@{$rows};
+
+  # Keep only versions that satisfy the constraint, carrying the parsed
+  # version object so we don't reparse in the sort. satisfy() is cpm's
+  # own semantics, so our picks agree with the rest of the cascade.
+  my @candidates;
+  for my $row ( @{$rows} ) {
+    my $vobj = eval { App::cpm::version->parse( $row->{version} // 0 ) };
+    next if !$vobj;
+    next if $range && !$vobj->satisfy($range);
+    push @candidates, { %{$row}, vobj => $vobj };
+  }
+
+  if ( !@candidates ) {
+    return { error => "found version(s) for $package, none satisfy " . ( $range // '(any)' ) . ", $self->{db}" };
+  }
+
+  # Highest satisfying version wins. NOTE: this sort MUST happen in Perl.
+  # SQLite ORDER BY is lexical text sort -- it puts 1.10.0 below 1.9.0.
+  my ($best) = sort { $b->{vobj} <=> $a->{vobj} } @candidates;
+
+  # The DB stores the full S3 key (authors/id/A/AB/AUTHOR/Dist-x.tar.gz,
+  # possibly under a bucket prefix). DistNotation wants the path relative
+  # to authors/id/, so strip everything up to and including it. The
+  # (?:.*/)? handles both a bare "authors/id/..." key and a prefixed
+  # "orepan2/authors/id/..." one.
+  ( my $rel = $best->{distribution} ) =~ s{^(?:.*/)?authors/id/}{};
+
+  my $dist = App::cpm::DistNotation->new_from_dist($rel);
+  return { error => "cannot parse dist path '$best->{distribution}'" }
+    if !$dist;
+
+  return {
+    source   => 'cpan',
+    distfile => $dist->distfile,
+    uri      => $dist->cpan_uri( $self->{mirror} ),
+    version  => $best->{version},
+    package  => $package,
+  };
+}
+
+1;

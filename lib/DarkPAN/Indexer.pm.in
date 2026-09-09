@@ -1,0 +1,181 @@
+#!/usr/bin/env perl
+
+package DarkPAN::Indexer;
+
+use strict;
+use warnings;
+
+use Carp;
+use CLI::Simple::Constants qw(:booleans);
+use Data::Dumper;
+use English qw(-no_match_vars);
+
+use parent qw(CLI::Simple);
+
+use Role::Tiny::With;
+with 'DarkPAN::Role::Indexer';
+with 'DarkPAN::Role::Loader';
+
+caller or exit __PACKAGE__->main();
+
+our $VERSION = '@PACKAGE_VERSION@';
+
+########################################################################
+sub cmd_index_darkpan {
+########################################################################
+  my ($self) = @_;
+
+  $self->index_darkpan(
+    bucket => $self->get_bucket,
+    prefix => $self->get_prefix,
+    region => $self->get_region,
+    output => $self->get_output,
+  );
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub cmd_load_database {
+########################################################################
+  my ($self) = @_;
+
+  my $rows_loaded = $self->load_database(
+    bucket   => $self->get_bucket,
+    input    => $self->get_input,
+    database => $self->get_database,
+    replace  => $self->get_replace // $TRUE,
+    region   => $self->get_region,
+  );
+
+  printf {*STDERR} "loaded %d rows into %s\n", $rows_loaded, $self->get_database;
+
+  return $SUCCESS;
+}
+
+########################################################################
+sub main {
+########################################################################
+  my $cli = __PACKAGE__->new(
+    option_specs => [
+      qw(
+        bucket|b=s
+        input|i=s
+        output|o=s
+        prefix|p=s
+        region|r=s
+        help|h
+      )
+    ],
+
+    default_options => {
+      prefix => 'authors/id/',
+      region => 'us-east-1',
+    },
+
+    commands => {
+      default => \&cmd_index_darkpan,
+      index   => \&cmd_index_darkpan,
+      load    => \&cmd_load_database,
+    },
+    abbreviations => $TRUE,
+  );
+
+  return $cli->run();
+}
+
+1;
+
+## no critic
+
+__END__
+
+=pod
+
+=encoding utf8
+
+=head1 NAME
+
+DarkPAN::Indexer - Build a module index from an S3-backed DarkPAN
+
+=head1 SYNOPSIS
+
+  darkpan-indexer \
+    --bucket my-darkpan \
+    --output modules.tsv
+
+  darkpan-indexer \
+    --bucket my-darkpan \
+    --prefix orepan2/authors/id/ \
+    --region us-east-1 \
+    --output modules.tsv
+
+  darkpan-indexer load \
+    --bucket cpan.openbedrock.net \
+    --input modules.tsv
+
+=head1 DESCRIPTION
+
+C<DarkPAN::Indexer> scans the C<authors/id/> hierarchy of an S3-backed
+DarkPAN for CPAN distribution tarballs.
+
+Each C<.tar.gz> distribution is downloaded, examined with
+L<Dist::Metadata>, and immediately written to a tab-separated flat file.
+
+Each output record contains:
+
+  distribution-tarball<TAB>module-name<TAB>module-version
+
+For example:
+
+  Amazon-API-2.8.0.tar.gz    Amazon::API             2.8.0
+  Amazon-API-2.8.0.tar.gz    Amazon::API::Bedrock    2.8.0
+
+If a module does not declare a version, the distribution version is used.
+
+All distribution versions encountered in the DarkPAN are retained.
+
+The C<load> command creates a new SQLite database from an index file.
+The database filename is derived from the bucket name by replacing dots
+with hyphens and appending C<.db>. An existing database is backed up
+before the new database is created.
+
+=head1 OPTIONS
+
+=over 4
+
+=item B<--bucket>, B<-b>
+
+S3 bucket containing the DarkPAN.
+
+=item B<--input>, B<-i>
+
+Input TSV file used by the C<load> command.
+
+=item B<--output>, B<-o>
+
+Output TSV file used by the C<index> command.
+
+=item B<--prefix>, B<-p>
+
+S3 prefix containing the DarkPAN authors hierarchy.
+
+Defaults to:
+
+  authors/id/
+
+=item B<--region>, B<-r>
+
+AWS region containing the S3 bucket.
+
+Defaults to:
+
+  us-east-1
+
+=item B<--help>, B<-h>
+
+Display usage information.
+
+=back
+
+=cut

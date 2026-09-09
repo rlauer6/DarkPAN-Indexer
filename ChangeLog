@@ -1,0 +1,33 @@
+Wed Sep 09 14:45:41  Rob Lauer  rclauer@gmail.com
+
+	[1.0.0]:
+	* .gitignore: new
+	* .includes/bash-completion.mk: new
+	* .includes/git.mk: new
+	* .includes/help.mk: new
+	* .includes/local.mk: new
+	* .includes/modulino.mk: new
+	* .includes/perl.mk: new
+	* .includes/release-notes.mk: new
+	* .includes/update.mk: new
+	* .includes/upgrade.mk: new
+	* .includes/version.mk: new
+	* ChangeLog: new
+	* Makefile: new
+	* README.md: new
+	* VERSION: new
+	* bin/darkpan-indexer.in: new
+	* buildspec.yml: new
+	* config.mk: new
+	* cpanfile: new
+	* deps.mk: new
+	* lib/DarkPAN/Indexer.pm.in: new
+	* lib/DarkPAN/Resolver/SQLite.pm.in: new
+	* lib/DarkPAN/Role/Indexer.pm.in: new
+	* lib/DarkPAN/Role/Loader.pm.in: new
+	* project.mk: new
+	* recommends: new
+	* requires: new
+	* suggests: new
+	* t/00-darkpan-indexer.t: new
+	* test-requires: new
