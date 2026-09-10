@@ -1,4 +1,4 @@
-package DarkPAN::Role::Indexer;
+package DarkPAN::Indexer::Role::Indexer;
 
 use strict;
 use warnings;

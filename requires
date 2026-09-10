@@ -9,5 +9,3 @@ DBI 1.647
 Dist::Metadata 
 Role::Tiny 2.002004
 Role::Tiny::With 2.002004
-experimental 0.032
-perl 5.024000

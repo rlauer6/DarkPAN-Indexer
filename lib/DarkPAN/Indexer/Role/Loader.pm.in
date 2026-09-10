@@ -1,4 +1,4 @@
-package DarkPAN::Role::Loader;
+package DarkPAN::Indexer::Role::Loader;
 
 use strict;
 use warnings;
@@ -17,8 +17,8 @@ sub load_database {
 ########################################################################
   my ( $self, %args ) = @_;
 
-  my ( $bucket, $input, $database, $replace, $distribution, $region )
-    = @args{qw(bucket input database replace distribution region)};
+  my ( $bucket, $input, $database, $create, $distribution, $region, $s3 )
+    = @args{qw(bucket input database create distribution region s3)};
 
   croak "bucket is required\n"
     if !defined $bucket || $bucket eq q{};
@@ -35,18 +35,20 @@ sub load_database {
     $database .= '.db';
   }
 
-  if ( -e $database && $replace ) {
-    my $timestamp = strftime '%Y%m%d-%H%M%S', localtime;
-    my $backup    = sprintf '%s.%s.bak', $database, $timestamp;
-    my $sequence  = 0;
+  if ($create) {
+    if ( -e $database ) {
+      my $timestamp = strftime '%Y%m%d-%H%M%S', localtime;
+      my $backup    = sprintf '%s.%s.bak', $database, $timestamp;
+      my $sequence  = 0;
 
-    while ( -e $backup ) {
-      $sequence++;
-      $backup = sprintf '%s.%s.%d.bak', $database, $timestamp, $sequence;
+      while ( -e $backup ) {
+        $sequence++;
+        $backup = sprintf '%s.%s.%d.bak', $database, $timestamp, $sequence;
+      }
+
+      rename $database, $backup
+        or croak sprintf "unable to back up '%s' to '%s': %s\n", $database, $backup, $OS_ERROR;
     }
-
-    rename $database, $backup
-      or croak sprintf "unable to back up '%s' to '%s': %s\n", $database, $backup, $OS_ERROR;
   }
 
   my $dbh = DBI->connect(
@@ -58,7 +60,7 @@ sub load_database {
     },
   );
 
-  if ($replace) {
+  if ($create) {
     $dbh->do(
       q{
       CREATE TABLE modules (
@@ -68,6 +70,7 @@ sub load_database {
       )
     }
     );
+
     $dbh->do('CREATE INDEX modules_module_idx ON modules (module)');
     $dbh->do('CREATE INDEX modules_distribution_idx ON modules (distribution)');
   }
@@ -86,6 +89,7 @@ sub load_database {
         bucket       => $bucket,
         database     => $database,
         region       => $region,
+        s3           => $s3,
       );
     }
   };
@@ -163,9 +167,9 @@ sub update_database {
 ########################################################################
   my ( $self, %args ) = @_;
 
-  my ( $distribution, $dbh, $bucket, $region ) = @args{qw(distribution dbh bucket region)};
+  my ( $distribution, $dbh, $database, $bucket, $s3, $region ) = @args{qw(distribution dbh database bucket s3 region)};
 
-  $dbh->do( sprintf 'delete from modules where distribution = ?', undef, $distribution );
+  $dbh->do( 'delete from modules where distribution = ?', undef, $distribution );
 
   my $index = q{};
 
@@ -176,6 +180,7 @@ sub update_database {
     key       => $distribution,
     bucket    => $bucket,
     output_fh => $output_fh,
+    s3        => $s3,
     region    => $region,
   );
 

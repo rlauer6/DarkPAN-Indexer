@@ -9,5 +9,3 @@ requires "DBI", "1.647";
 requires "Dist::Metadata", "";
 requires "Role::Tiny", "2.002004";
 requires "Role::Tiny::With", "2.002004";
-requires "experimental", "0.032";
-requires "perl", "5.024000";

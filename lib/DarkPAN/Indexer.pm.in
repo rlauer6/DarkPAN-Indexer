@@ -13,8 +13,8 @@ use English qw(-no_match_vars);
 use parent qw(CLI::Simple);
 
 use Role::Tiny::With;
-with 'DarkPAN::Role::Indexer';
-with 'DarkPAN::Role::Loader';
+with 'DarkPAN::Indexer::Role::Indexer';
+with 'DarkPAN::Indexer::Role::Loader';
 
 caller or exit __PACKAGE__->main();
 

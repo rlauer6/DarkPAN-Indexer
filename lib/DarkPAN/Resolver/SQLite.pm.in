@@ -6,66 +6,118 @@ package DarkPAN::Resolver::SQLite;
 # verbatim instead of prepending App::cpm::Resolver::):
 #
 #   cpm install \
-#     --resolver +DarkPAN::Resolver::SQLite,/path/to/cpan-openbedrock-net.db,https://cpan.openbedrock.net/orepan2 \
+#     --resolver +DarkPAN::Resolver::SQLite,https://cpan.openbedrock.net/orepan2 \
 #     Amazon::API~2.6.0
 #
-# (If you'd rather type --resolver SQLite,... drop this in as
-#  App::cpm::Resolver::SQLite instead. The '+' form just avoids
-#  squatting skaji's namespace.)
-#
-# Everything after the class name is comma-split and passed to new()
-# POSITIONALLY as @argv -- the built-in resolvers get a hand-built
-# %argv hash, but custom classes do not. That's the one contract gotcha.
-
-use v5.24;
+use strict;
 use warnings;
-use experimental qw(signatures);
 
+use Amazon::S3::Lite;
 use App::cpm::DistNotation;
 use App::cpm::version;
+use Carp;
+use Data::Dumper;
+use English qw(-no_match_vars);
 use DBI;
 
+use Role::Tiny::With;
+with 'DarkPAN::Indexer::Role::Utils';
+
 ########################################################################
-sub new ( $class, $ctx, @argv ) {
+sub new {
 ########################################################################
-  my ( $db, $mirror ) = @argv;  # <-- positional, not a hash
+  my ( $class, $ctx, $mirror ) = @_;
 
-  die "SQLite resolver: database path is required\n"
-    if !defined $db || $db eq q{};
+  my $self = bless { mirror => $mirror }, $class;
 
-  die "SQLite resolver: database '$db' not found\n"
-    if !-f $db;
+  my $dbh = $self->_connect($mirror);
 
-  # $mirror is the base such that "{mirror}/authors/id/{distfile}" is
-  # fetchable -- i.e. everything up to but NOT including authors/id/.
-  $mirror //= 'https://cpan.metacpan.org';
-  $mirror =~ s{/+$}{};
-
-  my $dbh
-    = DBI->connect( "dbi:SQLite:dbname=$db", q{}, q{}, { RaiseError => 1, PrintError => 0, AutoCommit => 1, ReadOnly => 1 }, );
-
-  # The whole point of the multi-version index: pull EVERY row for the
-  # package, not one. Latest-satisfying is chosen in Perl, below.
   my $sth = $dbh->prepare('SELECT version, distribution FROM modules WHERE module = ?');
 
-  return bless {
-    dbh    => $dbh,
-    sth    => $sth,
-    mirror => $mirror,
-    db     => $db,
-  }, $class;
+  @{$self}{qw(dbh sth)} = ( $dbh, $sth );
+
+  return $self;
 }
 
 ########################################################################
-sub resolve ( $self, $ctx, $task ) {
+sub get_s3 {
 ########################################################################
+  my ($self) = @_;
+
+  return $self->{s3}
+    if $self->{s3};
+
+  # may want to introduce a config file
+  my $s3 = Amazon::S3::Lite->new( { region => $ENV{AWS_REGION} // 'us-east-1' } );
+
+  $self->{s3} = $s3;
+
+  return $s3;
+}
+
+########################################################################
+sub DESTROY {
+########################################################################
+  my ($self) = @_;
+
+  if ( $self->{dbh} && $self->{dbh}->ping ) {
+    $self->{dbh}->disconnect;
+  }
+
+  if ( $self->{database} ) {
+    unlink $self->{database};
+  }
+
+  return;
+}
+
+########################################################################
+sub _connect {
+########################################################################
+  my ( $self, $mirror ) = @_;
+
+  my ($bucket) = $mirror =~ m{^https?://([^/]+)}xsm;  # may want to get bucket from config
+
+  my ($prefix) = $mirror =~ m{^https?://(?:[^/]+)/(.*)$}xsm;
+
+  my $database = $self->fetch_packages_version_index(
+    bucket         => $bucket,
+    s3             => $self->get_s3,
+    packages_index => "$prefix/modules/packages.db.gz",
+  );
+
+  $self->{database} = $database;  # so we can remove in DESTROY
+
+  my $dbh = eval {
+    return DBI->connect(
+      sprintf( 'dbi:SQLite:dbname=%s', $database ),
+      q{}, q{},
+      { AutoCommit => 1,
+        RaiseError => 0,
+        PrintError => 0,
+      },
+    );
+  };
+
+  croak "ERROR: could not open database: $database\n$EVAL_ERROR"
+    if $EVAL_ERROR;
+
+  return $dbh;
+}
+
+########################################################################
+sub resolve {
+########################################################################
+  my ( $self, $ctx, $task ) = @_;
+
   my $package = $task->{package};
   my $range   = $task->{version_range};  # full expression, may be undef
 
   $self->{sth}->execute($package);
+
   my $rows = $self->{sth}->fetchall_arrayref( {} );
 
-  return { error => "not found in $self->{db}" }
+  return { error => "not found in $self->{database}" }
     if !$rows || !@{$rows};
 
   # Keep only versions that satisfy the constraint, carrying the parsed
@@ -80,7 +132,7 @@ sub resolve ( $self, $ctx, $task ) {
   }
 
   if ( !@candidates ) {
-    return { error => "found version(s) for $package, none satisfy " . ( $range // '(any)' ) . ", $self->{db}" };
+    return { error => "found version(s) for $package, none satisfy " . ( $range // '(any)' ) . ", $self->{database}" };
   }
 
   # Highest satisfying version wins. NOTE: this sort MUST happen in Perl.

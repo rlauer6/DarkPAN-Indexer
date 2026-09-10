@@ -1,3 +1,40 @@
+Thu Sep 10 16:24:35 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.1]:
+	* VERSION: bump
+	* release-notes.md: new
+	* release-notes/release-notes-1.0.1.md: new
+	* lib/DarkPAN/Indexer/Role/Indexer.pm.in: renamed
+	* lib/DarkPAN/Indexer/Role/Loader.pm.in: renamed
+	* lib/DarkPAN/Indexer/Role/Utils.pm.in: new
+	* requires
+	- remove signatures, experimental, perl 5.24
+	* cpanfile: likewise
+	* deps.mk: generated
+	* lib/DarkPAN/Indexer.pm.in
+	- rename roles
+	* lib/DarkPAN/Indexer/Role/Indexer.pm.in
+	* lib/DarkPAN/Indexer/Role/Loader.pm.in
+	(load_database)
+	- add s3 argument
+	- only create backup if create flag set
+	- pass s3 to update_database
+	(update_database)
+	- accept s3
+	- remove spring from do statement
+	* lib/DarkPAN/Resolver/SQLite.pm.in
+	- remove experimental, perl 5.24
+	- compose in DarkPAN::Indexer::Role::Utils
+	(new)
+	- remove signature
+	- refactored to use _connect()
+	(_connect): new
+	(get_s3): new
+	(DESTROY): new
+	(resolve)
+	- remove signature
+	- {database}, not {db}
+
 Wed Sep 09 14:45:41  Rob Lauer  rclauer@gmail.com
 
 	[1.0.0]:
