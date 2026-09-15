@@ -1,3 +1,49 @@
+Mon Sep 14 14:17:59 2026  Rob Lauer  <rclauer@gmail.com>
+
+	[1.0.2]:
+	* VERSION: bump
+	* README.md: generated
+	* release-notes.md: updated
+	* release-notes/release-notes-1.0.2.md: new
+	* build-mirrors: new
+	* lib/DarkPAN/Indexer/CLI.pm.in: new
+	* lib/DarkPAN/Indexer/Format.pm.in: new
+	* lib/DarkPAN/Indexer/Format/SQLite.pm.in: renamed
+	* lib/DarkPAN/Indexer/Role/Indexer.pm.in: deleted
+	* lib/DarkPAN/Indexer/Role/Utils.pm.in: deleted
+	* lib/DarkPAN/Indexer/Storage.pm.in: new
+	* lib/DarkPAN/Indexer/Storage/Filesystem.pm.in: new
+	* lib/DarkPAN/Indexer/Storage/S3.pm.in: new
+	* lib/DarkPAN/Resolver/SQLite.pm.in: deleted
+	* share/Foo-1.0.0.tar.gz: new
+	* share/Foo-1.0.1.tar.gz: new
+	* t/02-storage-filesystem.t: new
+	* t/03-update-index.t: new
+	* t/04-update-index-failure.t: new
+	* t/05-update-index-missing-index.t: new
+	* test-requires.skip: new
+	* .includes/update.mk: updated by CPAN::Maker::Bootstrapper
+	* Makefile: likewise
+	* bin/darkpan-indexer.in: DarkPAN::Indexer::CLI
+	* buildspec.yml
+	- added sample distribution tarballs (Foo*.tar.gz)
+	- added t/dat/Acme-YakiniQ-0.01.tar.gz sample
+	* deps.mk: generated
+	* lib/DarkPAN/Indexer.pm.in
+	- moved CLI components to DarkPAN::Indexer::CLI
+	- essentially a new class
+	- added POD
+	(_load_config): support open handle
+	* lib/DarkPAN/Indexer/Format/SQLite.pm.in
+	- refactored from Loader.pm.in
+	* requires
+	- +Amazon::Credentials, Amazon::S3::Lite::Lock, Class::Accessor::Fast, JSON
+	* cpanfile: likewise
+	* suggests:
+	- YAML::Tiny
+	* .includes/bootstrap.mk: new
+	* test-requires: +Test::Output, Path::Tiny
+
 Thu Sep 10 16:24:35 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.1]:

@@ -156,6 +156,8 @@ bin/%: bin/%.in
 quick: ## quick build, turns off scanning, perltidy, perlcritic
 	$(NO_ECHO)$(MAKE) SCAN=off LINT=off
 
+-include .includes/bootstrap.mk
+
 .INTERMEDIATE: cpanfile.requires cpanfile.suggests cpanfile.recommends
 
 cpanfile.requires: requires test-requires
@@ -185,7 +187,7 @@ $(TARBALL): $(DEPS) | update-available \
 	PERL5LIB=$$(pwd)/local/lib/perl5:$$PERL5LIB $(CPAN_MAKER) $$SKIP_TESTS -l $(LOG_LEVEL) $$COLOR -b $<
 
 $(MODULE_PATH).in:
-	$(call gen-vars-file,$@.vars);
+	$(call gen-vars-file,$@.vars)
 	$(NO_ECHO)tmpl=$$(perl -MFile::ShareDir=dist_file -e 'print dist_file(q{CPAN-Maker-Bootstrapper}, q{class-module.pm.tmpl})' 2>/dev/null); \
 	[[ -n "$(STUB)" ]] && tmpl="$(STUB)"; \
 	trap 'rm -f $@.vars' EXIT; \
@@ -246,11 +248,19 @@ requires.raw recommends.raw suggests.raw &: $(SOURCE_FILES_IN) ## single scan pr
 	  --suggests-file suggests.raw > /dev/null; \
 	rm -f file_list.tmp
 
-test-requires.raw: $(TESTS) ## scan of t/ for test-only dependencies (requires tier only)
+provides: $(SOURCE_FILES_IN)
+	$(NO_ECHO)$(MAKE) SYNTAX_CHECKING=off $(PERL_MODULES)
+	$(NO_ECHO)$(BOOTSTRAPPER) provides >$@
+
+test-requires.raw: $(TESTS) provides
 	$(NO_ECHO)printf '%s\n' $(TESTS) > file_list.tmp; \
-	$(SCANDEPS) $(MIN_PERL_VERSION_FLAG) --raw --file-list file_list.tmp --no-core --filter \
-	  --requires-file test-requires.raw > /dev/null; \
-	rm -f file_list.tmp
+	$(SCANDEPS) $(MIN_PERL_VERSION_FLAG) \
+	  --raw \
+	  --file-list file_list.tmp \
+	  --no-core --filter \
+	  --requires-file test-requires.raw.tmp > /dev/null; \
+	comm -23 test-requires.raw.tmp provides > test-requires.raw; \
+	rm -f file_list.tmp test-requires.raw.tmp
 
 # shared by requires, recommends, suggests, and test-requires: reconciles
 # a fresh scan (%.raw) against history (skip list + previous run), via
@@ -322,7 +332,6 @@ CLEANFILES += \
     *.raw \
     extra-files \
     extra-files.mk \
-    provides \
     module.pm.tmpl \
     release-*.{lst,diffs} \
     cmb_md5sums.txt
@@ -417,14 +426,14 @@ package: clean ## run lint & scan
 
 # extra-files.mk:  $(TARBALL): share/foo.tpl share/bar.tpl 
 
-extra-files:
-	$(NO_ECHO)touch $@
+extra-files: buildspec.yml
+	$(NO_ECHO)$(BOOTSTRAPPER) extra-files > $@.tmp
+	$(NO_ECHO)mv $@.tmp $@
 
-extra-files.mk: buildspec.yml | extra-files
-	$(NO_ECHO)if [[ -e extra-files ]]; then \
-	  printf '$$(TARBALL): %s\n' "$$(awk 'NF{print $$1}' extra-files | tr '\n' ' ')" > $@; \
-	else \
-	  : > $@; \
-	fi
+extra-files.mk: extra-files
+	$(NO_ECHO)printf '$$(TARBALL): %s\n' \
+	  "$$(awk 'NF{print $$1}' $< | tr '\n' ' ')" > $@
 
+ifeq ($(BOOTSTRAP_BUILD),)
 -include extra-files.mk
+endif

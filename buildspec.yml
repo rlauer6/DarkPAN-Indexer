@@ -19,6 +19,10 @@ extra-files:
   - ChangeLog
   - share:
       - README.md
+      - share/Foo-1.0.0.tar.gz
+      - share/Foo-1.0.1.tar.gz
+  - t/dat:
+      - t/dat/Acme-YakiniQ-0.01.tar.gz
 resources:
   bugtracker:
     mailto: rclauer@gmail.com

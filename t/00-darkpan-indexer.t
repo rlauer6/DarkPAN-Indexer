@@ -5,6 +5,6 @@ use warnings;
 
 use Test::More;
 
-use_ok(qw(CPAN::Maker::Bootstrapper));
+use_ok(qw(DarkPAN::Indexer));
 
 done_testing;
