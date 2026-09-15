@@ -174,10 +174,12 @@ sub lock {
 
   # acquire() returns the guard on success, false if the lock is held
   # and could not be (stolen as stale / waited out).
+  my $lock_key = sprintf '%s.lock', $key;
+
   return Amazon::S3::Lite::Lock->new(
     s3     => $self->_s3,
     bucket => $self->{bucket},
-    key    => $key,
+    key    => $lock_key,
     ttl    => $opts{ttl}  // 300,
     wait   => $opts{wait} // 0,
   )->acquire;

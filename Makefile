@@ -85,14 +85,14 @@ endif
 
 define find-files
 $(1) := $(patsubst %.in,%,$(shell for d in $(2); do test -d "$$d" && \
-  find "$$d" -type f -name "$(3)" \
+  find "$$d" -type f \( -name "$(3)" $(if $(4),-o -name "$(4)") \) \
     ! -name '#*' ! -name '.#*' ! -name '*~' ! -name '*.bak' ; \
 done | sort))
 endef
 
 $(eval $(call find-files,PERL_MODULES,lib,*.pm.in))
 $(eval $(call find-files,BIN_FILES,bin,*.in))
-$(eval $(call find-files,TESTS,t,*.t))
+$(eval $(call find-files,TESTS,t,*.t,*.p[ml]))
 $(eval $(call find-files,SOURCE_FILES,lib bin,*.p[ml].in))
 
 SOURCE_FILES_IN := $(addsuffix .in,$(SOURCE_FILES))
@@ -254,11 +254,13 @@ provides: $(SOURCE_FILES_IN)
 
 test-requires.raw: $(TESTS) provides
 	$(NO_ECHO)printf '%s\n' $(TESTS) > file_list.tmp; \
+	tmp=$$(mktemp); trap 'rm -f $$tmp' EXIT; \
 	$(SCANDEPS) $(MIN_PERL_VERSION_FLAG) \
 	  --raw \
 	  --file-list file_list.tmp \
 	  --no-core --filter \
-	  --requires-file test-requires.raw.tmp > /dev/null; \
+	  --requires-file $$tmp > /dev/null; \
+	perl -npe 'while(s/  / /g) {}' < $$tmp > test-requires.raw.tmp; \
 	comm -23 test-requires.raw.tmp provides > test-requires.raw; \
 	rm -f file_list.tmp test-requires.raw.tmp
 
